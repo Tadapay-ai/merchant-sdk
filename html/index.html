@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pay with Agent</title>
+  </head>
+  <body>
+    <div id="agent-checkout"></div>
+
+    <script type="module">
+      import { mountPayWithAgentButton } from "./tadapay-browser-sdk.js";
+
+      // This endpoint is implemented by the merchant server with the Node or
+      // Python SDK. The browser must never receive TADAPAY_API_KEY.
+      const order = {
+        id: "order_123",
+        total: 2900,
+        items: [{
+          id: "credits",
+          name: "1,000 API credits",
+          quantity: 1,
+          unit_amount: 2900,
+          currency: "USD",
+          item_type: "digital_good",
+        }],
+      };
+
+      const response = await fetch("/api/agent-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(order),
+      });
+      if (!response.ok) throw new Error("Unable to create Agent Checkout");
+      const checkout = await response.json();
+
+      mountPayWithAgentButton({
+        element: "#agent-checkout",
+        hostedUrl: checkout.hostedUrl,
+        status: checkout.status ?? "open",
+      });
+    </script>
+  </body>
+</html>
