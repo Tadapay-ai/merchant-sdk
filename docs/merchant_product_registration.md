@@ -106,7 +106,7 @@ The upsert response includes `detail.product.id` and its optimistic-lock
 `version`. Move the product through the state machine using the current version:
 
 ```js
-let detail = await tadapay.activateCatalogProduct(
+detail = await tadapay.activateCatalogProduct(
   detail.product.id,
   detail.product.version,
   { idempotencyKey: "catalog:api-credits-1000:activate:v1", mode: "test" },
@@ -115,10 +115,12 @@ let detail = await tadapay.activateCatalogProduct(
 detail = await tadapay.publishCatalogProduct(
   detail.product.id,
   detail.product.version,
-  "public", // use "unlisted" for a direct, non-searchable product
+  "public",
   { idempotencyKey: "catalog:api-credits-1000:publish:v1", mode: "test" },
 );
 ```
+
+Use `"unlisted"` instead of `"public"` for a direct, non-searchable product.
 
 Publishing requires the `catalog:publish` permission (owner/admin by default).
 For a public listing, the product must have:
@@ -150,11 +152,9 @@ GET /agent/marketplace/products?q=api+credits&item_type=digital_good
 ```
 
 An agent or external platform can consume this REST API or integrate the
-Marketplace MCP/CLI source packages in `tadapay/marketplace-mcp/` and
-`tadapay/marketplace-cli/`. Those agent-side packages are not part of the
-merchant SDK bundle. The platform must do its own MCP/plugin/app registration
-if it requires one; this repository does not currently provide a third-party
-listing submission API.
+separately distributed TadaPay Marketplace MCP or CLI. Those agent-side packages
+are not part of the merchant SDK bundle. The platform must complete any required
+MCP, plugin, or app registration through its own registration process.
 
 For a purchase, the agent selects an active one-time `price_id` from the public
 manifest and posts `merchant_id`, `product_slug`, `price_id`, `quantity`, an

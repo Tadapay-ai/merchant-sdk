@@ -59,8 +59,8 @@ the external signer.
 
 The Marketplace MCP is the primary Agent interface. The companion CLI is useful
 for shell scripts, CI, and runtimes without MCP. Wallet installation and signing
-are delegated to a provider/MCP; see the packaged
-`marketplace-mcp/skill/SKILL.md` for the agent workflow.
+are delegated to a provider/MCP. Agent-side MCP and CLI packages are distributed
+separately from the merchant SDK bundle.
 
 The stdio MCP package is `@tadapay/marketplace-mcp` and exposes
 `tadapay_marketplace_search`, `tadapay_marketplace_get_product`,

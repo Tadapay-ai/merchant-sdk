@@ -1,75 +1,127 @@
-# 商户 SDK Quickstart
+# TadaPay Merchant SDK Integration Guide
 
-本文档是商户接入 TadaPay 的最短路径。目标是让商户后端创建一次
-Agent Checkout，前端展示 `Pay with Agent`，支付完成后通过签名 Webhook
-触发履约。
+SDK version: `0.1.0`
 
-## 1. 前置条件
+This guide covers the merchant integration from checkout creation to fulfillment.
+Your backend creates an Agent Checkout, your frontend displays `Pay with Agent`,
+and your backend verifies a signed webhook before delivering the purchase.
 
-商户需要从 TadaPay 控制台或注册 API 获取：
+## 1. Prerequisites
 
-- `TADAPAY_API_KEY`：仅允许保存在商户后端；
-- `TADAPAY_BASE_URL`：测试或生产 API 地址；
-- `TADAPAY_WEBHOOK_SECRET`：创建 Webhook Endpoint 时返回一次。
+Obtain the following values through the TadaPay merchant console or registration API:
 
-当前商户测试环境使用单域名：
+| Variable | Purpose |
+| --- | --- |
+| `TADAPAY_API_KEY` | Merchant API key. Store it on your backend only. |
+| `TADAPAY_BASE_URL` | API base URL for your assigned environment. |
+| `TADAPAY_WEBHOOK_SECRET` | Signing secret returned once when a webhook endpoint is created. |
+
+The test environment documented in the delivered bundle uses:
 
 ```sh
 TADAPAY_BASE_URL=https://tadapay.ai
 ```
 
-浏览器不得持有 API Key。浏览器只接收商户后端返回的 Hosted Checkout
-URL。
+Register at `https://tadapay.ai/console/register`, complete email verification,
+and save the one-time test API key. For the registration API and product setup,
+see [Merchant Product Registration](merchant_product_registration.md).
 
-## 2. 安装服务端 SDK
+The browser must never receive your API key. It receives only the hosted checkout
+URL returned by your backend. Configure the environment variables before starting
+your merchant application.
 
-目前 SDK `0.1.0` 尚未发布到 npm/PyPI。拿到
-`tadapay-merchant-sdk-0.1.0.zip` 后，先解压，再从其中的
-`packages/node/`、`packages/python/`、`packages/browser/` 安装本地包；
-纯 HTML 页面可直接参考 `html/index.html` 和同目录的浏览器模块。
-在解压后的根目录执行：
+## 2. Install the SDK
+
+Extract the SDK bundle. Run the installation
+command from the extracted bundle's root, or replace the relative path with the
+absolute path to the package file.
+
+Choose one server SDK for your backend.
+
+### Node.js 18 or later
 
 ```sh
 npm install ./packages/node/tadapay-sdk-0.1.0.tgz
+```
+
+The Express example below also requires:
+
+```sh
+npm install express
+```
+
+Use an ES module application, such as an `.mjs` entry point or a project with
+`"type": "module"` in `package.json`.
+
+### Python 3.11 or later
+
+```sh
 python -m pip install ./packages/python/tadapay_sdk-0.1.0-py3-none-any.whl
 ```
 
-以下注册表安装命令仅在正式公开发布后可用：
-
-Node.js 18+：
+The FastAPI example below also requires:
 
 ```sh
-npm install @tadapay/sdk
+python -m pip install fastapi uvicorn
 ```
 
-Python 3.11+：
+### Browser package
+
+For an application with a frontend bundler:
 
 ```sh
-python -m pip install tadapay-sdk
+npm install ./packages/browser/tadapay-browser-sdk-0.1.0.tgz
 ```
 
-仓库内开发时，可以分别使用本地包：
+For a plain HTML page, use `html/index.html` and the adjacent
+`html/tadapay-browser-sdk.js` module from the bundle.
 
-```sh
-npm install ./tadapay/sdks/node
-python -m pip install -e ./tadapay/sdks/python
+Use the supplied package files for this release.
+
+## 3. Create a checkout on your backend
+
+The examples accept an order with this structure:
+
+```json
+{
+  "id": "order_123",
+  "total": 2900,
+  "items": [
+    {
+      "id": "credits",
+      "name": "1,000 API credits",
+      "quantity": 1,
+      "unit_amount": 2900,
+      "currency": "USD",
+      "item_type": "digital_good"
+    }
+  ]
+}
 ```
 
-## 3. 商户后端创建 Checkout
+Amounts use minor currency units: USD 29.00 is `2900`. In your application,
+authenticate the buyer and load or validate the order, prices, and line items
+against trusted merchant data before passing them to the SDK. The example's
+request body illustrates the payload shape.
 
-Node/Express：
+Use stable idempotency keys for each order. Retries of the same request must
+reuse the same key and payload rather than generating a random key. The intent
+and checkout session use separate keys.
+
+### Node.js with Express
 
 ```js
 import express from "express";
 import { TadaPayClient } from "@tadapay/sdk";
 
 const app = express();
-app.use(express.json());
 
 const tadapay = new TadaPayClient({
   apiKey: process.env.TADAPAY_API_KEY,
   baseUrl: process.env.TADAPAY_BASE_URL,
 });
+
+app.use("/api", express.json());
 
 app.post("/api/agent-checkout", async (req, res, next) => {
   try {
@@ -109,7 +161,11 @@ app.post("/api/agent-checkout", async (req, res, next) => {
 });
 ```
 
-Python/FastAPI：
+JSON parsing is scoped to `/api` so that the webhook route in section 5 can
+receive the original request body. If you use a global `express.json()` parser,
+register the raw-body webhook route before that parser.
+
+### Python with FastAPI
 
 ```python
 import os
@@ -154,66 +210,69 @@ def create_agent_checkout(order: dict):
     }
 ```
 
-Pass `hostedUrl` to the browser exactly as returned, including its URL
-fragment. The fragment carries an expiring, checkout-scoped capability for
-the hosted page. Keep the TadaPay API key on the merchant server only.
+Pass `hostedUrl` to the browser exactly as returned, including its URL fragment.
+The fragment carries an expiring capability scoped to the checkout. Keep the
+TadaPay API key on the merchant server.
 
-For x402 USDC on Avalanche, pass the chain-specific token contract in the
-payment option. TadaPay fills the `USD Coin`/`2` EIP-712 metadata for Fuji and
-Avalanche C-Chain automatically:
+### Optional: x402 USDC on Avalanche
+
+Replace the sandbox payment option with a chain-specific x402 option when the
+TadaPay backend and merchant have been configured for that rail. For Fuji:
 
 ```js
-payment_options: [{
+const paymentOptions = [{
   rail: "x402",
   scheme: "exact",
-  network: "eip155:43113", // use eip155:43114 for Avalanche mainnet
-  asset: "0x5425890298aed601595a70AB815c96711a31Bc65", // mainnet: 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E
+  network: "eip155:43113",
+  asset: "0x5425890298aed601595a70AB815c96711a31Bc65",
   pay_to: process.env.AVALANCHE_USDC_TREASURY,
   price: "$0.01",
   decimals: 6,
-}],
+}];
 ```
 
-Select the PayAI facilitator on the TadaPay backend with
-`TADAPAY_X402_FACILITATOR_PROFILE=payai` and
-`TADAPAY_X402_REQUIRE_FACILITATOR=1`. Fuji is for testnet validation; use the
-mainnet network/address pair only after production risk and treasury review.
+Use `paymentOptions` as the checkout payload's `payment_options`. TadaPay fills
+the `USD Coin` / `2` EIP-712 metadata for Fuji and Avalanche C-Chain automatically.
 
-For a merchant-direct StraitsX XSGD route, use the XSGD contract and select the
-0xGasless profile. `pay_to` must be the merchant's own Avalanche wallet; the
-TadaPay wallet is never used as a settlement recipient:
+| Environment | Network | USDC contract |
+| --- | --- | --- |
+| Fuji testnet | `eip155:43113` | `0x5425890298aed601595a70AB815c96711a31Bc65` |
+| Avalanche mainnet | `eip155:43114` | `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` |
+
+Ask TadaPay to confirm that the PayAI route is enabled for your environment.
+Fuji is for testnet validation. Use the mainnet network and contract together
+only after live access and the merchant settlement wallet have been approved.
+
+### Optional: merchant-direct XSGD on Avalanche
+
+For a StraitsX XSGD route, use the XSGD asset and the `0xgasless` profile.
+The settlement recipient must be the merchant's own Avalanche wallet:
 
 ```js
 import { createAvalancheX402PaymentOption } from "@tadapay/sdk";
 
-payment_options: [createAvalancheX402PaymentOption({
+const paymentOptions = [createAvalancheX402PaymentOption({
   payTo: process.env.MERCHANT_AVALANCHE_TREASURY,
   price: "0.10",
   asset: "XSGD",
   network: "mainnet",
   facilitatorProfile: "0xgasless",
-})],
+})];
 ```
 
-The Python SDK exposes the same configuration through
-`build_avalanche_x402_payment_option`.
+Use this value as the checkout payload's `payment_options`. The Python SDK
+provides the equivalent `build_avalanche_x402_payment_option` helper. The
+TadaPay wallet is not the settlement recipient for this merchant-direct route.
 
-金额使用最小货币单位，例如 USD 29.00 表示为 `2900`。每个订单的
-Idempotency Key 必须稳定，重试时不能生成随机值。
+## 4. Display Pay with Agent in the browser
 
-## 4. 浏览器展示 `Pay with Agent`
+Add a mount point to your page:
 
-使用交付包时：
-
-```sh
-npm install ./packages/browser/tadapay-browser-sdk-0.1.0.tgz
+```html
+<div id="agent-checkout"></div>
 ```
 
-正式发布后可改用：
-
-```sh
-npm install @tadapay/browser-sdk
-```
+With the browser package installed, call your merchant backend and mount the button:
 
 ```js
 import { mountPayWithAgentButton } from "@tadapay/browser-sdk";
@@ -223,6 +282,7 @@ const response = await fetch("/api/agent-checkout", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(order),
 });
+if (!response.ok) throw new Error("Unable to create Agent Checkout");
 const checkout = await response.json();
 
 mountPayWithAgentButton({
@@ -231,71 +291,103 @@ mountPayWithAgentButton({
 });
 ```
 
-无构建工具的页面可参考交付包内的 `html/index.html`，把
-`html/tadapay-browser-sdk.js` 与页面部署在同一目录：
+Here, `order` is your application's order data, using the structure in section 3.
+Your backend remains responsible for validating it.
+
+For a page without a build step, deploy `html/tadapay-browser-sdk.js` beside
+the HTML page and use a module import:
 
 ```html
 <script type="module">
-  import { mountPayWithAgentButton } from
-    "./tadapay-browser-sdk.js";
+  import { mountPayWithAgentButton } from "./tadapay-browser-sdk.js";
 </script>
 ```
 
-正式发布到 npm 后，才可改用固定版本 CDN 地址。
+The bundle's `html/index.html` includes a complete browser example. Use the
+supplied browser module for a page without a build step.
 
-## 5. 验证 Webhook 后履约
+## 5. Verify the webhook before fulfillment
 
-必须使用未经 JSON 解析和重新序列化的原始请求体进行验签。
+Use the original request bytes for signature verification. Do not parse and
+re-serialize the body before verification.
+
+Add the following route to the Express application in section 3. Supply
+`persistEventAndEnqueueFulfillment` through your own storage and job system.
+That application function must durably save the verified event, deduplicate it
+by `event.id`, and enqueue fulfillment for `event.data.merchant_order_id`.
+Repeated deliveries must resolve successfully without creating duplicate jobs.
 
 ```js
 import { constructWebhookEvent } from "@tadapay/sdk";
 
-app.post(
-  "/webhooks/tadapay",
-  express.raw({ type: "application/json" }),
-  (req, res) => {
-    const event = constructWebhookEvent({
-      payload: req.body,
-      signatureHeader: req.get("TadaPay-Signature"),
-      secret: process.env.TADAPAY_WEBHOOK_SECRET,
-    });
+function registerTadaPayWebhook(app, persistEventAndEnqueueFulfillment) {
+  app.post(
+    "/webhooks/tadapay",
+    express.raw({ type: "application/json" }),
+    async (req, res, next) => {
+      let event;
+      try {
+        event = constructWebhookEvent({
+          payload: req.body,
+          signatureHeader: req.get("TadaPay-Signature"),
+          secret: process.env.TADAPAY_WEBHOOK_SECRET,
+        });
+      } catch {
+        return res.sendStatus(400);
+      }
 
-    if (event.type === "agent_payment_intent.succeeded") {
-      // 使用 event.intent_id / merchant_order 幂等履约。
-    }
-    res.sendStatus(204);
-  },
-);
+      try {
+        if (event.type === "receipt.issued") {
+          await persistEventAndEnqueueFulfillment(event);
+        }
+        return res.sendStatus(204);
+      } catch (error) {
+        return next(error);
+      }
+    },
+  );
+}
 ```
 
-商户应先记录事件，再异步履约。Webhook 重试不能导致重复发放商品或
-credits。
+Call `registerTadaPayWebhook(app, yourPersistenceFunction)` during application
+startup. Keep the route outside JSON-parsing middleware.
 
-## 6. 上线前验证
+Successful receipt notifications use this envelope:
 
-本地真实 HTTP SDK E2E：
-
-```sh
-cd tadapay
-python3.11 scripts/sdk_e2e.py
+```json
+{
+  "id": "wd_123",
+  "type": "receipt.issued",
+  "created_at": "2026-06-23T00:00:00Z",
+  "data": {
+    "intent_id": "api_123",
+    "request_id": "pr_123",
+    "receipt_id": "rcpt_123",
+    "merchant_order_id": "order_123",
+    "request_hash": "sha256:..."
+  }
+}
 ```
 
-针对测试环境：
+Persist the event before acknowledging delivery, then fulfill asynchronously.
+Also enforce order-level idempotency so multiple notifications cannot deliver
+the same product or credits twice. Your webhook integration delivers the file,
+license, API credits, or service access; TadaPay does not host the digital asset.
 
-```sh
-TADAPAY_E2E_API_KEY=... \
-python3.11 scripts/sdk_e2e.py \
-  --base-url https://tadapay.ai
-```
+## 6. Validate the integration
 
-SDK 发布物检查：
+Complete these checks in your assigned test environment:
 
-```sh
-python3.11 scripts/sdk_release_audit.py
-```
+1. Create a checkout for a known test order and confirm that the returned URL opens.
+2. Retry the same order with the same idempotency keys and payload; confirm that
+   the request reuses the existing intent and checkout session.
+3. Open checkout through the `Pay with Agent` button and complete the test payment.
+4. Confirm that your webhook receives and verifies the signed `receipt.issued` event.
+5. Confirm that an invalid webhook signature is rejected.
+6. Replay a valid webhook and confirm that fulfillment occurs only once.
+7. Check that the order ID in the receipt matches the order fulfilled by your system.
 
-商品注册、发布到 TadaPay Marketplace，以及第三方平台接入边界见
-[`merchant_product_registration.md`](merchant_product_registration.md)。
-
-完整生产准入流程见
-[`production_readiness.md`](production_readiness.md)。
+See [Merchant Product Registration](merchant_product_registration.md) for
+catalog synchronization and publication, [Agent Marketplace](marketplace.md)
+for agent discovery and purchases, and the [Go-Live Checklist](production_readiness.md)
+for the steps required before accepting live payments.

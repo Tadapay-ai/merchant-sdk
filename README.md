@@ -1,22 +1,28 @@
-# TadaPay Merchant SDK Bundle 0.1.0
+# TadaPay Merchant SDK 0.1.0
 
-This bundle contains the tested merchant SDK release:
+Merchant integration documentation for TadaPay SDK 0.1.0.
 
-- `packages/node/`: server-side `@tadapay/sdk` npm package;
-- `packages/python/`: server-side `tadapay-sdk` wheel;
-- `packages/browser/`: `@tadapay/browser-sdk` npm package;
-- `html/`: no-build browser template and a local browser SDK module;
-- `docs/`: checkout, product registration, and Marketplace guides.
+## Reading order
 
-The Node and Python SDKs are alternatives for the merchant backend. The HTML
-template is frontend-only: it calls the merchant's `/api/agent-checkout`
-endpoint and must never contain a TadaPay API key.
+1. [Merchant SDK Integration Guide](docs/merchant_sdk_quickstart.md): installation, backend
+   checkout creation, the browser button, signed webhooks, and validation.
+2. [Merchant Product Registration](docs/merchant_product_registration.md): product
+   synchronization, activation, publication, and external-platform boundaries.
+3. [Agent Marketplace](docs/marketplace.md): public discovery and agent purchases.
+4. [Go-Live Checklist](docs/production_readiness.md): integration checks and account
+   activation before accepting live payments.
 
-For the current merchant test environment, set `TADAPAY_BASE_URL` to
-`https://tadapay.ai`. The package is delivered as a local test bundle; it is
-not yet published to npm or PyPI.
+The SDK archive includes these guides in `docs/`, installable packages in
+`packages/node/`, `packages/python/`, and `packages/browser/`, and a no-build
+browser example in `html/`. Choose Node.js or Python for your backend and use
+the browser package or HTML example for your frontend.
 
-Install the local packages with `npm install <file>.tgz` or
-`python -m pip install <file>.whl`. See `docs/merchant_product_registration.md`
-for the catalog lifecycle and the boundary between TadaPay Marketplace and
-third-party platform registration.
+Install the supplied `.tgz` or `.whl` files as described in the integration
+guide. Keep API keys on your backend and confirm your assigned environment and
+enabled payment rails with TadaPay before starting integration.
+
+## Download
+
+[Download the English SDK bundle](downloads/tadapay-merchant-sdk-0.1.0-en.zip)
+for the installable Node.js, Python, and browser packages, the HTML example,
+and the English integration guides.
